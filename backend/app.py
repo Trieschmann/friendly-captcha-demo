@@ -6,6 +6,7 @@ import psycopg2.extras
 import hashlib
 from datetime import datetime
 import json
+import sqlite3
 
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "fallback-secret-key-change-in-production")
