@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <title>Login mit Friendly Captcha</title>
+</head>
+<body>
+  <h2>Login</h2>
+  <form method="POST" action="/submit">
+    <input type="text" name="username" placeholder="Benutzername" required />
+    <input type="password" name="password" placeholder="Passwort" required />
+    
+    <div class="frc-captcha" data-sitekey="YOUR_PUBLIC_SITEKEY"></div>
+    
+    <button type="submit">Login</button>
+  </form>
+
+  <script src="https://unpkg.com/friendly-challenge@0.9.9/widget.module.min.js" type="module"></script>
+</body>
+</html>
