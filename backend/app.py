@@ -258,6 +258,14 @@ def save_membership_step(step):
         })
     elif step == 3:
         form_data.update({
+            'company_street': request.form.get('company_street'),
+            'company_postal_code': request.form.get('company_postal_code'),
+            'company_city': request.form.get('company_city'),
+            'company_country': request.form.get('company_country'),
+            'company_phone': request.form.get('company_phone'),
+            'company_website': request.form.get('company_website'),
+    
+            'contact_salutation': request.form.get('contact_salutation'),
             'first_name': request.form.get('first_name'),
             'last_name': request.form.get('last_name'),
             'email': request.form.get('email'),
@@ -1117,57 +1125,74 @@ MEMBERSHIP_STEP3_TEMPLATE = '''
             <div class="step-info">Step 3 of 4 - Contact Details</div>
             
             <form method="POST" action="/membership/form/3">
+                <h3>🏢 Company Details</h3>
+            
+                <div class="form-group">
+                    <label for="company_street">Number and Street <span class="required">*</span></label>
+                    <input type="text" name="company_street" id="company_street" value="{{ form_data.get('company_street', '') }}" required>
+                </div>
+            
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="company_postal_code">Postal Code <span class="required">*</span></label>
+                        <input type="text" name="company_postal_code" id="company_postal_code" value="{{ form_data.get('company_postal_code', '') }}" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="company_city">City <span class="required">*</span></label>
+                        <input type="text" name="company_city" id="company_city" value="{{ form_data.get('company_city', '') }}" required>
+                    </div>
+                </div>
+            
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="company_country">Country <span class="required">*</span></label>
+                        <input type="text" name="company_country" id="company_country" value="{{ form_data.get('company_country', '') }}" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="company_phone">Phone Number</label>
+                        <input type="tel" name="company_phone" id="company_phone" value="{{ form_data.get('company_phone', '') }}">
+                    </div>
+                </div>
+            
+                <div class="form-group">
+                    <label for="company_website">Website</label>
+                    <input type="url" name="company_website" id="company_website" value="{{ form_data.get('company_website', '') }}">
+                </div>
+            
+                <hr style="margin: 40px 0; border-top: 1px solid #ddd;">
+            
+                <h3>👤 Contact Person within the Client Company</h3>
+            
+                <div class="form-group">
+                    <label for="contact_salutation">Salutation <span class="required">*</span></label>
+                    <select name="contact_salutation" id="contact_salutation" required>
+                        <option value="">Please select</option>
+                        <option value="Mr" {{ 'selected' if form_data.get('contact_salutation') == 'Mr' else '' }}>Mr</option>
+                        <option value="Ms" {{ 'selected' if form_data.get('contact_salutation') == 'Ms' else '' }}>Ms</option>
+                    </select>
+                </div>
+            
                 <div class="form-row">
                     <div class="form-group">
                         <label for="first_name">First Name <span class="required">*</span></label>
-                        <input 
-                            type="text" 
-                            name="first_name" 
-                            id="first_name"
-                            value="{{ form_data.get('first_name', '') }}" 
-                            placeholder="Enter first name"
-                            required
-                        >
+                        <input type="text" name="first_name" id="first_name" value="{{ form_data.get('first_name', '') }}" required>
                     </div>
-                    
                     <div class="form-group">
                         <label for="last_name">Last Name <span class="required">*</span></label>
-                        <input 
-                            type="text" 
-                            name="last_name" 
-                            id="last_name"
-                            value="{{ form_data.get('last_name', '') }}" 
-                            placeholder="Enter last name"
-                            required
-                        >
+                        <input type="text" name="last_name" id="last_name" value="{{ form_data.get('last_name', '') }}" required>
                     </div>
                 </div>
-                
+            
                 <div class="form-group">
                     <label for="email">Email Address <span class="required">*</span></label>
-                    <input 
-                        type="email" 
-                        name="email" 
-                        id="email"
-                        value="{{ form_data.get('email', '') }}" 
-                        placeholder="Enter email address"
-                        required
-                    >
-                    <div class="form-help">We'll use this to send membership updates and important information</div>
+                    <input type="email" name="email" id="email" value="{{ form_data.get('email', '') }}" required>
                 </div>
-                
+            
                 <div class="form-group">
                     <label for="phone">Phone Number</label>
-                    <input 
-                        type="tel" 
-                        name="phone" 
-                        id="phone"
-                        value="{{ form_data.get('phone', '') }}" 
-                        placeholder="Enter phone number"
-                    >
-                    <div class="form-help">Optional - for urgent communications only</div>
+                    <input type="tel" name="phone" id="phone" value="{{ form_data.get('phone', '') }}">
                 </div>
-                
+            
                 <div class="navigation">
                     <a href="/membership/form/2" class="btn btn-secondary">← Previous Step</a>
                     <button type="submit" class="btn btn-primary">Continue →</button>
