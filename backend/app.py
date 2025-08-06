@@ -1,4 +1,4 @@
-from flask import Flask, request, render_template_string, redirect, url_for, session, jsonify
+from flask import Flask, request, render_template_string, redirect, url_for, session, jsonify, send_file
 import requests
 import os
 import psycopg2
@@ -7,11 +7,27 @@ import hashlib
 from datetime import datetime
 import json
 import sqlite3
+from werkzeug.utils import secure_filename
+import uuid
 
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "fallback-secret-key-change-in-production")
 FRIENDLY_CAPTCHA_SECRET = os.getenv("FRIENDLY_CAPTCHA_SECRET")
 DATABASE_URL = os.getenv("DATABASE_URL")
+
+# File upload configuration
+UPLOAD_FOLDER = os.path.join(os.getcwd(), 'uploads')
+ALLOWED_EXTENSIONS = {'pdf'}
+MAX_FILE_SIZE = 16 * 1024 * 1024  # 16MB max file size
+
+# Create upload directory if it doesn't exist
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['MAX_CONTENT_LENGTH'] = MAX_FILE_SIZE
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 # Database connection for PostgreSQL (Render Standard)
 def get_db_connection():
@@ -59,6 +75,8 @@ def init_db():
                         data_processing_consent BOOLEAN DEFAULT FALSE,
                         marketing_consent BOOLEAN DEFAULT FALSE,
                         terms_consent BOOLEAN DEFAULT TRUE,
+                        consent_document_filename VARCHAR(255),
+                        consent_document_original_name VARCHAR(255),
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         FOREIGN KEY (user_id) REFERENCES users (id)
                     )''')
@@ -95,6 +113,8 @@ def init_db():
                         data_processing_consent BOOLEAN DEFAULT 0,
                         marketing_consent BOOLEAN DEFAULT 0,
                         terms_consent BOOLEAN DEFAULT 1,
+                        consent_document_filename TEXT,
+                        consent_document_original_name TEXT,
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         FOREIGN KEY (user_id) REFERENCES users (id)
                     )''')
@@ -250,6 +270,22 @@ def save_membership_step(step):
             'terms_consent': bool(request.form.get('terms_consent'))
         })
         
+        # Handle file upload
+        consent_filename = None
+        consent_original_name = None
+        
+        if 'consent_document' in request.files:
+            file = request.files['consent_document']
+            if file and file.filename != '' and allowed_file(file.filename):
+                # Generate unique filename
+                file_extension = file.filename.rsplit('.', 1)[1].lower()
+                consent_filename = f"{uuid.uuid4().hex}.{file_extension}"
+                consent_original_name = secure_filename(file.filename)
+                
+                # Save file
+                file_path = os.path.join(app.config['UPLOAD_FOLDER'], consent_filename)
+                file.save(file_path)
+        
         # Save member to database
         conn = get_db_connection()
         cur = conn.cursor()
@@ -258,8 +294,9 @@ def save_membership_step(step):
             cur.execute('''INSERT INTO members 
                           (user_id, membership_type, country, company_name, business_activity, 
                            sub_activity, has_online_store, online_store_products, first_name, 
-                           last_name, email, phone, data_processing_consent, marketing_consent, terms_consent)
-                          VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)''',
+                           last_name, email, phone, data_processing_consent, marketing_consent, 
+                           terms_consent, consent_document_filename, consent_document_original_name)
+                          VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)''',
                          (session['user_id'], form_data.get('membership_type'), form_data.get('country'),
                           form_data.get('company_name'), form_data.get('business_activity'),
                           form_data.get('sub_activity'), form_data.get('has_online_store', False),
@@ -267,13 +304,15 @@ def save_membership_step(step):
                           form_data.get('last_name'), form_data.get('email'), form_data.get('phone'),
                           form_data.get('data_processing_consent', False),
                           form_data.get('marketing_consent', False),
-                          form_data.get('terms_consent', True)))
+                          form_data.get('terms_consent', True),
+                          consent_filename, consent_original_name))
         else:
             cur.execute('''INSERT INTO members 
                           (user_id, membership_type, country, company_name, business_activity, 
                            sub_activity, has_online_store, online_store_products, first_name, 
-                           last_name, email, phone, data_processing_consent, marketing_consent, terms_consent)
-                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                           last_name, email, phone, data_processing_consent, marketing_consent, 
+                           terms_consent, consent_document_filename, consent_document_original_name)
+                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                          (session['user_id'], form_data.get('membership_type'), form_data.get('country'),
                           form_data.get('company_name'), form_data.get('business_activity'),
                           form_data.get('sub_activity'), form_data.get('has_online_store', False),
@@ -281,7 +320,8 @@ def save_membership_step(step):
                           form_data.get('last_name'), form_data.get('email'), form_data.get('phone'),
                           form_data.get('data_processing_consent', False),
                           form_data.get('marketing_consent', False),
-                          form_data.get('terms_consent', True)))
+                          form_data.get('terms_consent', True),
+                          consent_filename, consent_original_name))
         
         conn.commit()
         conn.close()
@@ -292,6 +332,36 @@ def save_membership_step(step):
     session['membership_form'] = form_data
     next_step = step + 1 if step < 4 else 4
     return redirect(url_for('membership_form', step=next_step))
+
+@app.route('/download/<int:member_id>/consent')
+def download_consent_document(member_id):
+    if 'user_id' not in session:
+        return redirect(url_for('index'))
+    
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    if DATABASE_URL:
+        cur.execute('SELECT consent_document_filename, consent_document_original_name FROM members WHERE id = %s AND user_id = %s', 
+                   (member_id, session['user_id']))
+    else:
+        cur.execute('SELECT consent_document_filename, consent_document_original_name FROM members WHERE id = ? AND user_id = ?', 
+                   (member_id, session['user_id']))
+    
+    result = cur.fetchone()
+    conn.close()
+    
+    if not result or not result[0]:
+        return "File not found", 404
+    
+    filename = result[0]
+    original_name = result[1] or filename
+    file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    
+    if not os.path.exists(file_path):
+        return "File not found", 404
+    
+    return send_file(file_path, as_attachment=True, download_name=original_name)
 
 @app.route('/logout')
 def logout():
@@ -385,6 +455,8 @@ DASHBOARD_TEMPLATE = '''
         .btn-primary:hover { background: #0056b3; transform: translateY(-1px); }
         .btn-secondary { background: #6c757d; color: white; }
         .btn-secondary:hover { background: #545b62; }
+        .btn-success { background: #28a745; color: white; }
+        .btn-success:hover { background: #218838; }
         .add-button { margin-bottom: 30px; position: relative; display: inline-block; }
         .dropdown-container { position: relative; display: inline-block; }
         .dropdown-button { 
@@ -420,7 +492,7 @@ DASHBOARD_TEMPLATE = '''
         .member-card h3 { margin: 0 0 15px 0; color: #007bff; font-size: 1.3em; }
         .member-info { margin: 15px 0; line-height: 1.6; }
         .member-info strong { color: #555; }
-        .member-actions { margin-top: 20px; display: flex; gap: 10px; }
+        .member-actions { margin-top: 20px; display: flex; gap: 10px; flex-wrap: wrap; }
         .member-actions .btn { padding: 8px 16px; font-size: 14px; }
         .empty-state { text-align: center; padding: 80px 20px; color: #6c757d; }
         .empty-state h3 { font-size: 1.5em; margin-bottom: 15px; }
@@ -437,6 +509,11 @@ DASHBOARD_TEMPLATE = '''
         .status-active { background: #d4edda; color: #155724; }
         .status-pending { background: #fff3cd; color: #856404; }
         .status-expired { background: #f8d7da; color: #721c24; }
+        .document-info {
+            margin-top: 10px; padding: 8px; background: #f8f9fa; border-radius: 6px; 
+            font-size: 13px; color: #6c757d;
+        }
+        .document-info strong { color: #495057; }
     </style>
 </head>
 <body>
@@ -460,8 +537,8 @@ DASHBOARD_TEMPLATE = '''
                 <div class="stat-label">Active Members</div>
             </div>
             <div class="stat-card">
-                <div class="stat-number">{{ members|selectattr('membership_type')|list|length }}</div>
-                <div class="stat-label">With Membership Type</div>
+                <div class="stat-number">{{ members|selectattr('consent_document_filename')|list|length }}</div>
+                <div class="stat-label">With Documents</div>
             </div>
         </div>
         {% endif %}
@@ -497,9 +574,19 @@ DASHBOARD_TEMPLATE = '''
                             {{ (member.status or 'pending')|title }}
                         </span>
                     </div>
+                    
+                    {% if member.consent_document_filename %}
+                    <div class="document-info">
+                        <strong>📄 Consent Document:</strong> {{ member.consent_document_original_name or 'Uploaded' }}
+                    </div>
+                    {% endif %}
+                    
                     <div class="member-actions">
                         <a href="/membership/{{ member.id }}/view" class="btn btn-primary">View</a>
                         <a href="/membership/{{ member.id }}/edit" class="btn btn-secondary">Edit</a>
+                        {% if member.consent_document_filename %}
+                        <a href="/download/{{ member.id }}/consent" class="btn btn-success">📄 Download PDF</a>
+                        {% endif %}
                     </div>
                 </div>
                 {% endfor %}
@@ -1146,6 +1233,26 @@ MEMBERSHIP_STEP4_TEMPLATE = '''
         .checkbox-item.required {
             border-color: #007bff; background: #f0f8ff;
         }
+        .file-upload-section {
+            background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 30px;
+            border: 2px dashed #007bff;
+        }
+        .file-upload-section h4 {
+            margin: 0 0 15px 0; color: #007bff; display: flex; align-items: center; gap: 8px;
+        }
+        .file-input-wrapper {
+            position: relative; display: inline-block; width: 100%;
+        }
+        .file-input {
+            width: 100%; padding: 12px; border: 2px solid #ddd; border-radius: 8px;
+            background: white; cursor: pointer; font-size: 14px;
+        }
+        .file-input:hover {
+            border-color: #007bff;
+        }
+        .file-help {
+            font-size: 13px; color: #6c757d; margin-top: 8px;
+        }
         .btn { 
             padding: 14px 28px; border: none; border-radius: 8px; cursor: pointer; 
             margin-right: 12px; font-weight: 600; transition: all 0.3s; 
@@ -1172,6 +1279,10 @@ MEMBERSHIP_STEP4_TEMPLATE = '''
         }
         .summary-label {
             font-weight: 600; color: #555;
+        }
+        .error-message {
+            color: #dc3545; background: #f8d7da; padding: 10px; border-radius: 6px;
+            margin-bottom: 20px; font-size: 14px;
         }
     </style>
 </head>
@@ -1209,7 +1320,25 @@ MEMBERSHIP_STEP4_TEMPLATE = '''
                 </div>
             </div>
             
-            <form method="POST" action="/membership/form/4">
+            <form method="POST" action="/membership/form/4" enctype="multipart/form-data">
+                <div class="file-upload-section">
+                    <h4>📄 Customer Consent Confirmation</h4>
+                    <div class="file-input-wrapper">
+                        <input 
+                            type="file" 
+                            name="consent_document" 
+                            id="consent_document" 
+                            class="file-input"
+                            accept=".pdf"
+                            onchange="updateFileName(this)"
+                        >
+                    </div>
+                    <div class="file-help">
+                        Please upload a PDF document confirming customer consent. Maximum file size: 16MB.
+                        <br><strong>Accepted format:</strong> PDF files only
+                    </div>
+                </div>
+                
                 <div class="checkbox-group">
                     <div class="checkbox-item required">
                         <input 
@@ -1262,6 +1391,46 @@ MEMBERSHIP_STEP4_TEMPLATE = '''
             </form>
         </div>
     </div>
+
+    <script>
+        function updateFileName(input) {
+            if (input.files && input.files[0]) {
+                const fileName = input.files[0].name;
+                const fileSize = input.files[0].size;
+                const maxSize = 16 * 1024 * 1024; // 16MB
+                
+                if (fileSize > maxSize) {
+                    alert('File size exceeds 16MB limit. Please choose a smaller file.');
+                    input.value = '';
+                    return;
+                }
+                
+                if (!fileName.toLowerCase().endsWith('.pdf')) {
+                    alert('Please select a PDF file only.');
+                    input.value = '';
+                    return;
+                }
+                
+                // Update the visual feedback (optional)
+                console.log('File selected:', fileName);
+            }
+        }
+
+        // Prevent form submission if file is too large
+        document.querySelector('form').addEventListener('submit', function(e) {
+            const fileInput = document.getElementById('consent_document');
+            if (fileInput.files[0]) {
+                const fileSize = fileInput.files[0].size;
+                const maxSize = 16 * 1024 * 1024; // 16MB
+                
+                if (fileSize > maxSize) {
+                    e.preventDefault();
+                    alert('File size exceeds 16MB limit. Please choose a smaller file.');
+                    return false;
+                }
+            }
+        });
+    </script>
 </body>
 </html>
 '''
