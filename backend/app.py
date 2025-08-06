@@ -381,6 +381,28 @@ def logout():
 def health_check():
     return {'status': 'healthy', 'timestamp': datetime.now().isoformat()}
 
+@app.route('/membership/<int:member_id>/view')
+def view_member(member_id):
+    if 'user_id' not in session:
+        return redirect(url_for('index'))
+
+    conn = get_db_connection()
+    if DATABASE_URL:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute('SELECT * FROM members WHERE id = %s AND user_id = %s', (member_id, session['user_id']))
+    else:
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+        cur.execute('SELECT * FROM members WHERE id = ? AND user_id = ?', (member_id, session['user_id']))
+
+    member = cur.fetchone()
+    conn.close()
+
+    if not member:
+        return "Member not found", 404
+
+    return render_template_string(VIEW_MEMBER_TEMPLATE, member=member)
+
 # Template Constants
 LOGIN_TEMPLATE = '''
 <!DOCTYPE html>
@@ -609,6 +631,84 @@ DASHBOARD_TEMPLATE = '''
 </body>
 </html>
 '''
+VIEW_MEMBER_TEMPLATE = '''
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>View Member Details</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #f8f9fa;
+            padding: 40px;
+        }
+        .container {
+            max-width: 800px;
+            margin: auto;
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        h2 {
+            text-align: center;
+            margin-bottom: 30px;
+            color: #007bff;
+        }
+        .detail-group {
+            margin-bottom: 20px;
+        }
+        .label {
+            font-weight: bold;
+            color: #333;
+        }
+        .value {
+            margin-left: 10px;
+            color: #555;
+        }
+        .back-link {
+            display: inline-block;
+            margin-top: 30px;
+            background: #6c757d;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            text-decoration: none;
+        }
+        .back-link:hover {
+            background: #545b62;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>👤 Member Details</h2>
+
+        {% for key, value in member.items() %}
+            {% if value and key not in ['id', 'user_id', 'consent_document_filename'] %}
+                <div class="detail-group">
+                    <span class="label">{{ key.replace('_', ' ').title() }}:</span>
+                    <span class="value">{{ value }}</span>
+                </div>
+            {% endif %}
+        {% endfor %}
+
+        {% if member.consent_document_filename %}
+            <div class="detail-group">
+                <span class="label">Consent Document:</span>
+                <a class="value" href="/download/{{ member.id }}/consent" target="_blank">
+                    📄 {{ member.consent_document_original_name or "Download" }}
+                </a>
+            </div>
+        {% endif %}
+
+        <a href="/dashboard" class="back-link">← Back to Dashboard</a>
+    </div>
+</body>
+</html>
+'''
+
 
 MEMBERSHIP_STEP1_TEMPLATE = '''
 <!DOCTYPE html>
