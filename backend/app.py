@@ -636,7 +636,7 @@ VIEW_MEMBER_TEMPLATE = '''
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>View Member Details</title>
+    <title>Member Details</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -644,35 +644,55 @@ VIEW_MEMBER_TEMPLATE = '''
             padding: 40px;
         }
         .container {
-            max-width: 800px;
+            max-width: 900px;
             margin: auto;
             background: white;
-            padding: 30px;
+            padding: 40px;
             border-radius: 12px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.1);
         }
         h2 {
             text-align: center;
-            margin-bottom: 30px;
+            margin-bottom: 40px;
             color: #007bff;
         }
-        .detail-group {
-            margin-bottom: 20px;
+        h3 {
+            margin-top: 40px;
+            color: #343a40;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 8px;
+        }
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px dashed #e9ecef;
         }
         .label {
-            font-weight: bold;
-            color: #333;
+            font-weight: 600;
+            color: #495057;
+            flex: 0 0 40%;
         }
         .value {
-            margin-left: 10px;
-            color: #555;
+            flex: 1;
+            color: #212529;
+            text-align: right;
+        }
+        .file-link {
+            display: inline-block;
+            margin-top: 8px;
+            text-decoration: none;
+            color: #007bff;
+        }
+        .file-link:hover {
+            text-decoration: underline;
         }
         .back-link {
             display: inline-block;
-            margin-top: 30px;
+            margin-top: 40px;
             background: #6c757d;
             color: white;
-            padding: 10px 20px;
+            padding: 12px 24px;
             border-radius: 8px;
             text-decoration: none;
         }
@@ -685,21 +705,33 @@ VIEW_MEMBER_TEMPLATE = '''
     <div class="container">
         <h2>👤 Member Details</h2>
 
-        {% for key, value in member.items() %}
-            {% if value and key not in ['id', 'user_id', 'consent_document_filename'] %}
-                <div class="detail-group">
-                    <span class="label">{{ key.replace('_', ' ').title() }}:</span>
-                    <span class="value">{{ value }}</span>
-                </div>
-            {% endif %}
-        {% endfor %}
+        <h3>🏢 Company Details</h3>
+        <div class="detail-row"><span class="label">Company Name</span><span class="value">{{ member.company_name }}</span></div>
+        <div class="detail-row"><span class="label">Website</span><span class="value">{{ member.company_website or '—' }}</span></div>
+        <div class="detail-row"><span class="label">Street</span><span class="value">{{ member.company_street }}</span></div>
+        <div class="detail-row"><span class="label">Postal Code</span><span class="value">{{ member.company_postal_code }}</span></div>
+        <div class="detail-row"><span class="label">City</span><span class="value">{{ member.company_city }}</span></div>
+        <div class="detail-row"><span class="label">Country</span><span class="value">{{ member.company_country }}</span></div>
+        <div class="detail-row"><span class="label">Phone</span><span class="value">{{ member.company_phone or '—' }}</span></div>
 
+        <h3>👤 Contact Person</h3>
+        <div class="detail-row"><span class="label">Salutation</span><span class="value">{{ member.contact_salutation }}</span></div>
+        <div class="detail-row"><span class="label">First Name</span><span class="value">{{ member.first_name }}</span></div>
+        <div class="detail-row"><span class="label">Last Name</span><span class="value">{{ member.last_name }}</span></div>
+        <div class="detail-row"><span class="label">Email</span><span class="value">{{ member.email }}</span></div>
+        <div class="detail-row"><span class="label">Phone</span><span class="value">{{ member.phone or '—' }}</span></div>
+
+        <h3>📄 Membership Details</h3>
+        <div class="detail-row"><span class="label">Category</span><span class="value">{{ member.category }}</span></div>
+        <div class="detail-row"><span class="label">Online Store</span><span class="value">{{ member.online_store or '—' }}</span></div>
         {% if member.consent_document_filename %}
-            <div class="detail-group">
-                <span class="label">Consent Document:</span>
-                <a class="value" href="/download/{{ member.id }}/consent" target="_blank">
-                    📄 {{ member.consent_document_original_name or "Download" }}
-                </a>
+            <div class="detail-row">
+                <span class="label">Consent Document</span>
+                <span class="value">
+                    <a href="/download/{{ member.id }}/consent" class="file-link" target="_blank">
+                        📄 {{ member.consent_document_original_name or "Download" }}
+                    </a>
+                </span>
             </div>
         {% endif %}
 
@@ -708,6 +740,7 @@ VIEW_MEMBER_TEMPLATE = '''
 </body>
 </html>
 '''
+
 
 
 MEMBERSHIP_STEP1_TEMPLATE = '''
