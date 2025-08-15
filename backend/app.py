@@ -48,83 +48,57 @@ def init_db():
     cur = conn.cursor()
     
     if DATABASE_URL:
-        # PostgreSQL Tables
-        cur.execute('''CREATE TABLE IF NOT EXISTS users (
-                        id SERIAL PRIMARY KEY,
-                        username VARCHAR(255) UNIQUE NOT NULL,
-                        password_hash VARCHAR(255) NOT NULL,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                    )''')
-        
-        cur.execute('''CREATE TABLE IF NOT EXISTS members (
-                        id SERIAL PRIMARY KEY,
-                        user_id INTEGER NOT NULL,
-                        membership_type VARCHAR(100) NOT NULL,
-                        country VARCHAR(100),
-                        company_name VARCHAR(255) NOT NULL,
-                        business_activity VARCHAR(100),
-                        sub_activity VARCHAR(100),
-                        has_online_store BOOLEAN DEFAULT FALSE,
-                        online_store_products VARCHAR(50),
-                        first_name VARCHAR(100),
-                        last_name VARCHAR(100),
-                        email VARCHAR(255),
-                        phone VARCHAR(50),
-                        status VARCHAR(20) DEFAULT 'pending',
-                        join_date DATE DEFAULT CURRENT_DATE,
-                        data_processing_consent BOOLEAN DEFAULT FALSE,
-                        marketing_consent BOOLEAN DEFAULT FALSE,
-                        terms_consent BOOLEAN DEFAULT TRUE,
-                        consent_document_filename VARCHAR(255),
-                        consent_document_original_name VARCHAR(255),
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        FOREIGN KEY (user_id) REFERENCES users (id)
-                    )''')
-        
-        # Test user for PostgreSQL
+        # ... (dein bisheriges CREATE TABLE bleibt unverändert)
+
+        # >>> NEU: fehlende Spalten sicher hinzufügen (PostgreSQL)
+        alter_statements = [
+            "ALTER TABLE members ADD COLUMN IF NOT EXISTS company_street VARCHAR(255)",
+            "ALTER TABLE members ADD COLUMN IF NOT EXISTS company_postal_code VARCHAR(50)",
+            "ALTER TABLE members ADD COLUMN IF NOT EXISTS company_city VARCHAR(100)",
+            "ALTER TABLE members ADD COLUMN IF NOT EXISTS company_country VARCHAR(100)",
+            "ALTER TABLE members ADD COLUMN IF NOT EXISTS company_phone VARCHAR(50)",
+            "ALTER TABLE members ADD COLUMN IF NOT EXISTS company_website VARCHAR(255)",
+            "ALTER TABLE members ADD COLUMN IF NOT EXISTS contact_salutation VARCHAR(20)"
+        ]
+        for stmt in alter_statements:
+            cur.execute(stmt)
+
+        # Testuser bleibt
         password_hash = hashlib.sha256("admin123".encode()).hexdigest()
-        cur.execute('''INSERT INTO users (username, password_hash) VALUES (%s, %s) 
-                      ON CONFLICT (username) DO NOTHING''', ('admin', password_hash))
+        cur.execute(
+            '''INSERT INTO users (username, password_hash) VALUES (%s, %s) 
+               ON CONFLICT (username) DO NOTHING''',
+            ('admin', password_hash)
+        )
     else:
-        # SQLite Tables (for local development)
-        cur.execute('''CREATE TABLE IF NOT EXISTS users (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        username TEXT UNIQUE NOT NULL,
-                        password_hash TEXT NOT NULL,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                    )''')
-        
-        cur.execute('''CREATE TABLE IF NOT EXISTS members (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        user_id INTEGER NOT NULL,
-                        membership_type TEXT NOT NULL,
-                        country TEXT,
-                        company_name TEXT NOT NULL,
-                        business_activity TEXT,
-                        sub_activity TEXT,
-                        has_online_store BOOLEAN DEFAULT 0,
-                        online_store_products TEXT,
-                        first_name TEXT,
-                        last_name TEXT,
-                        email TEXT,
-                        phone TEXT,
-                        status TEXT DEFAULT 'pending',
-                        join_date DATE DEFAULT CURRENT_DATE,
-                        data_processing_consent BOOLEAN DEFAULT 0,
-                        marketing_consent BOOLEAN DEFAULT 0,
-                        terms_consent BOOLEAN DEFAULT 1,
-                        consent_document_filename TEXT,
-                        consent_document_original_name TEXT,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        FOREIGN KEY (user_id) REFERENCES users (id)
-                    )''')
-        
+        # ... (dein bisheriges CREATE TABLE bleibt unverändert)
+
+        # >>> NEU: fehlende Spalten sicher hinzufügen (SQLite)
+        add_cols_sqlite = [
+            "ALTER TABLE members ADD COLUMN company_street TEXT",
+            "ALTER TABLE members ADD COLUMN company_postal_code TEXT",
+            "ALTER TABLE members ADD COLUMN company_city TEXT",
+            "ALTER TABLE members ADD COLUMN company_country TEXT",
+            "ALTER TABLE members ADD COLUMN company_phone TEXT",
+            "ALTER TABLE members ADD COLUMN company_website TEXT",
+            "ALTER TABLE members ADD COLUMN contact_salutation TEXT",
+        ]
+        for stmt in add_cols_sqlite:
+            try:
+                cur.execute(stmt)
+            except Exception:
+                # Spalte existiert bereits -> ignorieren
+                pass
+
         password_hash = hashlib.sha256("admin123".encode()).hexdigest()
-        cur.execute('INSERT OR IGNORE INTO users (username, password_hash) VALUES (?, ?)', 
-                   ('admin', password_hash))
+        cur.execute(
+            'INSERT OR IGNORE INTO users (username, password_hash) VALUES (?, ?)',
+            ('admin', password_hash)
+        )
     
     conn.commit()
     conn.close()
+
 
 # Helper functions
 def verify_user(username, password):
@@ -272,67 +246,122 @@ def save_membership_step(step):
             'phone': request.form.get('phone')
         })
     elif step == 4:
-        form_data.update({
-            'data_processing_consent': bool(request.form.get('data_processing_consent')),
-            'marketing_consent': bool(request.form.get('marketing_consent')),
-            'terms_consent': bool(request.form.get('terms_consent'))
-        })
-        
-        # Handle file upload
-        consent_filename = None
-        consent_original_name = None
-        
-        if 'consent_document' in request.files:
-            file = request.files['consent_document']
-            if file and file.filename != '' and allowed_file(file.filename):
-                # Generate unique filename
-                file_extension = file.filename.rsplit('.', 1)[1].lower()
-                consent_filename = f"{uuid.uuid4().hex}.{file_extension}"
-                consent_original_name = secure_filename(file.filename)
-                
-                # Save file
-                file_path = os.path.join(app.config['UPLOAD_FOLDER'], consent_filename)
-                file.save(file_path)
-        
-        # Save member to database
-        conn = get_db_connection()
-        cur = conn.cursor()
-        
-        if DATABASE_URL:
-            cur.execute('''INSERT INTO members 
-                          (user_id, membership_type, country, company_name, business_activity, 
-                           sub_activity, has_online_store, online_store_products, first_name, 
-                           last_name, email, phone, data_processing_consent, marketing_consent, 
-                           terms_consent, consent_document_filename, consent_document_original_name)
-                          VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)''',
-                         (session['user_id'], form_data.get('membership_type'), form_data.get('country'),
-                          form_data.get('company_name'), form_data.get('business_activity'),
-                          form_data.get('sub_activity'), form_data.get('has_online_store', False),
-                          form_data.get('online_store_products'), form_data.get('first_name'),
-                          form_data.get('last_name'), form_data.get('email'), form_data.get('phone'),
-                          form_data.get('data_processing_consent', False),
-                          form_data.get('marketing_consent', False),
-                          form_data.get('terms_consent', True),
-                          consent_filename, consent_original_name))
-        else:
-            cur.execute('''INSERT INTO members 
-                          (user_id, membership_type, country, company_name, business_activity, 
-                           sub_activity, has_online_store, online_store_products, first_name, 
-                           last_name, email, phone, data_processing_consent, marketing_consent, 
-                           terms_consent, consent_document_filename, consent_document_original_name)
-                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                         (session['user_id'], form_data.get('membership_type'), form_data.get('country'),
-                          form_data.get('company_name'), form_data.get('business_activity'),
-                          form_data.get('sub_activity'), form_data.get('has_online_store', False),
-                          form_data.get('online_store_products'), form_data.get('first_name'),
-                          form_data.get('last_name'), form_data.get('email'), form_data.get('phone'),
-                          form_data.get('data_processing_consent', False),
-                          form_data.get('marketing_consent', False),
-                          form_data.get('terms_consent', True),
-                          consent_filename, consent_original_name))
-        
-        conn.commit()
-        conn.close()
+            form_data.update({
+                'data_processing_consent': bool(request.form.get('data_processing_consent')),
+                'marketing_consent': bool(request.form.get('marketing_consent')),
+                'terms_consent': bool(request.form.get('terms_consent'))
+            })
+    
+            # File-Upload (unverändert)
+            consent_filename = None
+            consent_original_name = None
+            if 'consent_document' in request.files:
+                file = request.files['consent_document']
+                if file and file.filename != '' and allowed_file(file.filename):
+                    file_extension = file.filename.rsplit('.', 1)[1].lower()
+                    consent_filename = f"{uuid.uuid4().hex}.{file_extension}"
+                    consent_original_name = secure_filename(file.filename)
+                    file_path = os.path.join(app.config['UPLOAD_FOLDER'], consent_filename)
+                    file.save(file_path)
+    
+            # >>> NEU: kompletter INSERT inkl. aller Felder aus Step 2/3
+            conn = get_db_connection()
+            cur = conn.cursor()
+    
+            if DATABASE_URL:
+                cur.execute('''INSERT INTO members 
+                    (user_id, membership_type, country, company_name, business_activity, sub_activity,
+                     has_online_store, online_store_products,
+                     company_street, company_postal_code, company_city, company_country,
+                     company_phone, company_website,
+                     contact_salutation, first_name, last_name, email, phone,
+                     data_processing_consent, marketing_consent, terms_consent,
+                     consent_document_filename, consent_document_original_name)
+                    VALUES
+                    (%s, %s, %s, %s, %s, %s,
+                     %s, %s,
+                     %s, %s, %s, %s,
+                     %s, %s,
+                     %s, %s, %s, %s, %s,
+                     %s, %s, %s,
+                     %s, %s)''',
+                    (
+                        session['user_id'],
+                        form_data.get('membership_type'),
+                        form_data.get('country'),
+                        form_data.get('company_name'),
+                        form_data.get('business_activity'),
+                        form_data.get('sub_activity'),
+                        bool(form_data.get('has_online_store', False)),
+                        form_data.get('online_store_products'),
+                        form_data.get('company_street'),
+                        form_data.get('company_postal_code'),
+                        form_data.get('company_city'),
+                        form_data.get('company_country'),
+                        form_data.get('company_phone'),
+                        form_data.get('company_website'),
+                        form_data.get('contact_salutation'),
+                        form_data.get('first_name'),
+                        form_data.get('last_name'),
+                        form_data.get('email'),
+                        form_data.get('phone'),
+                        bool(form_data.get('data_processing_consent', False)),
+                        bool(form_data.get('marketing_consent', False)),
+                        bool(form_data.get('terms_consent', True)),
+                        consent_filename,
+                        consent_original_name
+                    )
+                )
+            else:
+                cur.execute('''INSERT INTO members 
+                    (user_id, membership_type, country, company_name, business_activity, sub_activity,
+                     has_online_store, online_store_products,
+                     company_street, company_postal_code, company_city, company_country,
+                     company_phone, company_website,
+                     contact_salutation, first_name, last_name, email, phone,
+                     data_processing_consent, marketing_consent, terms_consent,
+                     consent_document_filename, consent_document_original_name)
+                    VALUES
+                    (?, ?, ?, ?, ?, ?,
+                     ?, ?,
+                     ?, ?, ?, ?,
+                     ?, ?,
+                     ?, ?, ?, ?, ?,
+                     ?, ?, ?,
+                     ?, ?)''',
+                    (
+                        session['user_id'],
+                        form_data.get('membership_type'),
+                        form_data.get('country'),
+                        form_data.get('company_name'),
+                        form_data.get('business_activity'),
+                        form_data.get('sub_activity'),
+                        1 if form_data.get('has_online_store', False) else 0,
+                        form_data.get('online_store_products'),
+                        form_data.get('company_street'),
+                        form_data.get('company_postal_code'),
+                        form_data.get('company_city'),
+                        form_data.get('company_country'),
+                        form_data.get('company_phone'),
+                        form_data.get('company_website'),
+                        form_data.get('contact_salutation'),
+                        form_data.get('first_name'),
+                        form_data.get('last_name'),
+                        form_data.get('email'),
+                        form_data.get('phone'),
+                        1 if form_data.get('data_processing_consent', False) else 0,
+                        1 if form_data.get('marketing_consent', False) else 0,
+                        1 if form_data.get('terms_consent', True) else 0,
+                        consent_filename,
+                        consent_original_name
+                    )
+                )
+    
+            conn.commit()
+            conn.close()
+
+        session.pop('membership_form', None)
+        return redirect(url_for('dashboard'))
         
         session.pop('membership_form', None)
         return redirect(url_for('dashboard'))
@@ -402,6 +431,60 @@ def view_member(member_id):
         return "Member not found", 404
 
     return render_template_string(VIEW_MEMBER_TEMPLATE, member=member)
+
+@app.route('/membership/<int:member_id>/delete', methods=['POST'])
+def delete_member(member_id):
+    if 'user_id' not in session:
+        return redirect(url_for('index'))
+
+    # 1) Datei-Namen holen (falls vorhanden)
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    if DATABASE_URL:
+        cur.execute(
+            'SELECT consent_document_filename FROM members WHERE id = %s AND user_id = %s',
+            (member_id, session['user_id'])
+        )
+    else:
+        cur.execute(
+            'SELECT consent_document_filename FROM members WHERE id = ? AND user_id = ?',
+            (member_id, session['user_id'])
+        )
+
+    row = cur.fetchone()
+    consent_filename = None
+    if row:
+        # row kann Tuple oder Mapping sein (Postgres RealDict im Projekt an anderer Stelle),
+        # hier kommt Standard-Cursor -> Tupel/Index
+        consent_filename = row[0] if not isinstance(row, dict) else row.get('consent_document_filename')
+
+    # 2) Datensatz löschen (nur eigener)
+    if DATABASE_URL:
+        cur.execute(
+            'DELETE FROM members WHERE id = %s AND user_id = %s',
+            (member_id, session['user_id'])
+        )
+    else:
+        cur.execute(
+            'DELETE FROM members WHERE id = ? AND user_id = ?',
+            (member_id, session['user_id'])
+        )
+    conn.commit()
+    conn.close()
+
+    # 3) Datei entfernen (falls vorhanden)
+    if consent_filename:
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], consent_filename)
+        try:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+        except Exception:
+            # Dateifehler bewusst ignorieren – Datenbankeintrag ist bereits gelöscht
+            pass
+
+    return redirect(url_for('dashboard'))
+
 
 # Template Constants
 LOGIN_TEMPLATE = '''
@@ -483,6 +566,8 @@ DASHBOARD_TEMPLATE = '''
                font-weight: 600; transition: all 0.3s; }
         .btn-primary { background: #007bff; color: white; }
         .btn-primary:hover { background: #0056b3; transform: translateY(-1px); }
+        .btn-danger { background: #dc3545; color: white; }
+        .btn-danger:hover { background: #b02a37; }
         .btn-secondary { background: #6c757d; color: white; }
         .btn-secondary:hover { background: #545b62; }
         .btn-success { background: #28a745; color: white; }
@@ -617,6 +702,12 @@ DASHBOARD_TEMPLATE = '''
                         {% if member.consent_document_filename %}
                         <a href="/download/{{ member.id }}/consent" class="btn btn-success">📄 Download PDF</a>
                         {% endif %}
+                
+                        <!-- HIER NEU EINFÜGEN -->
+                        <form method="POST" action="/membership/{{ member.id }}/delete" style="display:inline;"
+                              onsubmit="return confirm('Diesen Datensatz wirklich löschen? Dieser Vorgang kann nicht rückgängig gemacht werden.');">
+                            <button type="submit" class="btn btn-danger">Delete</button>
+                        </form>
                     </div>
                 </div>
                 {% endfor %}
@@ -638,67 +729,17 @@ VIEW_MEMBER_TEMPLATE = '''
     <meta charset="UTF-8">
     <title>Member Details</title>
     <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            background: #f8f9fa;
-            padding: 40px;
-        }
-        .container {
-            max-width: 900px;
-            margin: auto;
-            background: white;
-            padding: 40px;
-            border-radius: 12px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-        }
-        h2 {
-            text-align: center;
-            margin-bottom: 40px;
-            color: #007bff;
-        }
-        h3 {
-            margin-top: 40px;
-            color: #343a40;
-            border-bottom: 1px solid #ddd;
-            padding-bottom: 8px;
-        }
-        .detail-row {
-            display: flex;
-            justify-content: space-between;
-            padding: 10px 0;
-            border-bottom: 1px dashed #e9ecef;
-        }
-        .label {
-            font-weight: 600;
-            color: #495057;
-            flex: 0 0 40%;
-        }
-        .value {
-            flex: 1;
-            color: #212529;
-            text-align: right;
-        }
-        .file-link {
-            display: inline-block;
-            margin-top: 8px;
-            text-decoration: none;
-            color: #007bff;
-        }
-        .file-link:hover {
-            text-decoration: underline;
-        }
-        .back-link {
-            display: inline-block;
-            margin-top: 40px;
-            background: #6c757d;
-            color: white;
-            padding: 12px 24px;
-            border-radius: 8px;
-            text-decoration: none;
-        }
-        .back-link:hover {
-            background: #545b62;
-        }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f8f9fa; padding: 40px; }
+        .container { max-width: 900px; margin: auto; background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        h2 { text-align: center; margin-bottom: 40px; color: #007bff; }
+        h3 { margin-top: 40px; color: #343a40; border-bottom: 1px solid #ddd; padding-bottom: 8px; }
+        .detail-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px dashed #e9ecef; }
+        .label { font-weight: 600; color: #495057; flex: 0 0 40%; }
+        .value { flex: 1; color: #212529; text-align: right; }
+        .file-link { display: inline-block; margin-top: 8px; text-decoration: none; color: #007bff; }
+        .file-link:hover { text-decoration: underline; }
+        .back-link { display: inline-block; margin-top: 40px; background: #6c757d; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; }
+        .back-link:hover { background: #545b62; }
     </style>
 </head>
 <body>
@@ -706,24 +747,39 @@ VIEW_MEMBER_TEMPLATE = '''
         <h2>👤 Member Details</h2>
 
         <h3>🏢 Company Details</h3>
-        <div class="detail-row"><span class="label">Company Name</span><span class="value">{{ member.company_name }}</span></div>
+        <div class="detail-row"><span class="label">Company Name</span><span class="value">{{ member.company_name or '—' }}</span></div>
         <div class="detail-row"><span class="label">Website</span><span class="value">{{ member.company_website or '—' }}</span></div>
-        <div class="detail-row"><span class="label">Street</span><span class="value">{{ member.company_street }}</span></div>
-        <div class="detail-row"><span class="label">Postal Code</span><span class="value">{{ member.company_postal_code }}</span></div>
-        <div class="detail-row"><span class="label">City</span><span class="value">{{ member.company_city }}</span></div>
-        <div class="detail-row"><span class="label">Country</span><span class="value">{{ member.company_country }}</span></div>
+        <div class="detail-row"><span class="label">Street</span><span class="value">{{ member.company_street or '—' }}</span></div>
+        <div class="detail-row"><span class="label">Postal Code</span><span class="value">{{ member.company_postal_code or '—' }}</span></div>
+        <div class="detail-row"><span class="label">City</span><span class="value">{{ member.company_city or '—' }}</span></div>
+        <div class="detail-row"><span class="label">Country</span><span class="value">{{ member.company_country or member.country or '—' }}</span></div>
         <div class="detail-row"><span class="label">Phone</span><span class="value">{{ member.company_phone or '—' }}</span></div>
 
         <h3>👤 Contact Person</h3>
-        <div class="detail-row"><span class="label">Salutation</span><span class="value">{{ member.contact_salutation }}</span></div>
-        <div class="detail-row"><span class="label">First Name</span><span class="value">{{ member.first_name }}</span></div>
-        <div class="detail-row"><span class="label">Last Name</span><span class="value">{{ member.last_name }}</span></div>
-        <div class="detail-row"><span class="label">Email</span><span class="value">{{ member.email }}</span></div>
+        <div class="detail-row"><span class="label">Salutation</span><span class="value">{{ member.contact_salutation or '—' }}</span></div>
+        <div class="detail-row"><span class="label">First Name</span><span class="value">{{ member.first_name or '—' }}</span></div>
+        <div class="detail-row"><span class="label">Last Name</span><span class="value">{{ member.last_name or '—' }}</span></div>
+        <div class="detail-row"><span class="label">Email</span><span class="value">{{ member.email or '—' }}</span></div>
         <div class="detail-row"><span class="label">Phone</span><span class="value">{{ member.phone or '—' }}</span></div>
 
         <h3>📄 Membership Details</h3>
-        <div class="detail-row"><span class="label">Category</span><span class="value">{{ member.category }}</span></div>
-        <div class="detail-row"><span class="label">Online Store</span><span class="value">{{ member.online_store or '—' }}</span></div>
+        <div class="detail-row"><span class="label">Membership Type</span><span class="value">{{ member.membership_type or '—' }}</span></div>
+        <div class="detail-row"><span class="label">Business Activity</span><span class="value">{{ member.business_activity or '—' }}</span></div>
+        <div class="detail-row"><span class="label">Sub-activity</span><span class="value">{{ member.sub_activity or '—' }}</span></div>
+        <div class="detail-row">
+            <span class="label">Online Store</span>
+            <span class="value">
+                {% if member.has_online_store in (True, 1, '1') %}Yes{% elif member.has_online_store in (False, 0, '0', None) %}No{% else %}{{ member.has_online_store }}{% endif %}
+            </span>
+        </div>
+        <div class="detail-row">
+            <span class="label">Online Store Products</span>
+            <span class="value">
+                {% set map = {'own_products':'Products they own','vendor_products':'Products by other vendors','both':'Both'} %}
+                {{ map.get(member.online_store_products, '—') }}
+            </span>
+        </div>
+
         {% if member.consent_document_filename %}
             <div class="detail-row">
                 <span class="label">Consent Document</span>
@@ -740,6 +796,7 @@ VIEW_MEMBER_TEMPLATE = '''
 </body>
 </html>
 '''
+
 
 
 
