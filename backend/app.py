@@ -46,56 +46,54 @@ def get_db_connection():
 def init_db():
     conn = get_db_connection()
     cur = conn.cursor()
-    
-    if DATABASE_URL:
-        # ... (dein bisheriges CREATE TABLE bleibt unverändert)
 
-        # >>> NEU: fehlende Spalten sicher hinzufügen (PostgreSQL)
-        alter_statements = [
-            "ALTER TABLE members ADD COLUMN IF NOT EXISTS company_street VARCHAR(255)",
-            "ALTER TABLE members ADD COLUMN IF NOT EXISTS company_postal_code VARCHAR(50)",
-            "ALTER TABLE members ADD COLUMN IF NOT EXISTS company_city VARCHAR(100)",
-            "ALTER TABLE members ADD COLUMN IF NOT EXISTS company_country VARCHAR(100)",
-            "ALTER TABLE members ADD COLUMN IF NOT EXISTS company_phone VARCHAR(50)",
-            "ALTER TABLE members ADD COLUMN IF NOT EXISTS company_website VARCHAR(255)",
-            "ALTER TABLE members ADD COLUMN IF NOT EXISTS contact_salutation VARCHAR(20)"
-        ]
-        for stmt in alter_statements:
-            cur.execute(stmt)
-
-        # Testuser bleibt
-        password_hash = hashlib.sha256("admin123".encode()).hexdigest()
-        cur.execute(
-            '''INSERT INTO users (username, password_hash) VALUES (%s, %s) 
-               ON CONFLICT (username) DO NOTHING''',
-            ('admin', password_hash)
+    # Nur members-Tabelle (und users, falls Login nötig)
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL
         )
-    else:
-        # ... (dein bisheriges CREATE TABLE bleibt unverändert)
+    ''')
 
-        # >>> NEU: fehlende Spalten sicher hinzufügen (SQLite)
-        add_cols_sqlite = [
-            "ALTER TABLE members ADD COLUMN company_street TEXT",
-            "ALTER TABLE members ADD COLUMN company_postal_code TEXT",
-            "ALTER TABLE members ADD COLUMN company_city TEXT",
-            "ALTER TABLE members ADD COLUMN company_country TEXT",
-            "ALTER TABLE members ADD COLUMN company_phone TEXT",
-            "ALTER TABLE members ADD COLUMN company_website TEXT",
-            "ALTER TABLE members ADD COLUMN contact_salutation TEXT",
-        ]
-        for stmt in add_cols_sqlite:
-            try:
-                cur.execute(stmt)
-            except Exception:
-                # Spalte existiert bereits -> ignorieren
-                pass
-
-        password_hash = hashlib.sha256("admin123".encode()).hexdigest()
-        cur.execute(
-            'INSERT OR IGNORE INTO users (username, password_hash) VALUES (?, ?)',
-            ('admin', password_hash)
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS members (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            membership_type TEXT,
+            country TEXT,
+            company_name TEXT,
+            business_activity TEXT,
+            sub_activity TEXT,
+            has_online_store INTEGER,
+            online_store_products TEXT,
+            company_street TEXT,
+            company_postal_code TEXT,
+            company_city TEXT,
+            company_country TEXT,
+            company_phone TEXT,
+            company_website TEXT,
+            contact_salutation TEXT,
+            first_name TEXT,
+            last_name TEXT,
+            email TEXT,
+            phone TEXT,
+            data_processing_consent INTEGER,
+            marketing_consent INTEGER,
+            terms_consent INTEGER,
+            consent_document_filename TEXT,
+            consent_document_original_name TEXT,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
         )
-    
+    ''')
+
+    from werkzeug.security import generate_password_hash
+    password_hash = generate_password_hash('admin')
+    cur.execute(
+        'INSERT OR IGNORE INTO users (username, password_hash) VALUES (?, ?)',
+        ('admin', password_hash)
+    )
+
     conn.commit()
     conn.close()
 
