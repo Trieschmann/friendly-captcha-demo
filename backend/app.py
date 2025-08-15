@@ -223,6 +223,7 @@ def save_membership_step(step):
             'company_name': request.form.get('company_name'),
             'membership_type': request.form.get('membership_type')
         })
+
     elif step == 2:
         form_data.update({
             'business_activity': request.form.get('business_activity'),
@@ -230,6 +231,7 @@ def save_membership_step(step):
             'has_online_store': request.form.get('has_online_store') == 'yes',
             'online_store_products': request.form.get('online_store_products')
         })
+
     elif step == 3:
         form_data.update({
             'company_street': request.form.get('company_street'),
@@ -238,137 +240,139 @@ def save_membership_step(step):
             'company_country': request.form.get('company_country'),
             'company_phone': request.form.get('company_phone'),
             'company_website': request.form.get('company_website'),
-    
+
             'contact_salutation': request.form.get('contact_salutation'),
             'first_name': request.form.get('first_name'),
             'last_name': request.form.get('last_name'),
             'email': request.form.get('email'),
             'phone': request.form.get('phone')
         })
+
     elif step == 4:
-            form_data.update({
-                'data_processing_consent': bool(request.form.get('data_processing_consent')),
-                'marketing_consent': bool(request.form.get('marketing_consent')),
-                'terms_consent': bool(request.form.get('terms_consent'))
-            })
-    
-            # File-Upload (unverändert)
-            consent_filename = None
-            consent_original_name = None
-            if 'consent_document' in request.files:
-                file = request.files['consent_document']
-                if file and file.filename != '' and allowed_file(file.filename):
-                    file_extension = file.filename.rsplit('.', 1)[1].lower()
-                    consent_filename = f"{uuid.uuid4().hex}.{file_extension}"
-                    consent_original_name = secure_filename(file.filename)
-                    file_path = os.path.join(app.config['UPLOAD_FOLDER'], consent_filename)
-                    file.save(file_path)
-    
-            # >>> NEU: kompletter INSERT inkl. aller Felder aus Step 2/3
-            conn = get_db_connection()
-            cur = conn.cursor()
-    
-            if DATABASE_URL:
-                cur.execute('''INSERT INTO members 
-                    (user_id, membership_type, country, company_name, business_activity, sub_activity,
-                     has_online_store, online_store_products,
-                     company_street, company_postal_code, company_city, company_country,
-                     company_phone, company_website,
-                     contact_salutation, first_name, last_name, email, phone,
-                     data_processing_consent, marketing_consent, terms_consent,
-                     consent_document_filename, consent_document_original_name)
-                    VALUES
-                    (%s, %s, %s, %s, %s, %s,
-                     %s, %s,
-                     %s, %s, %s, %s,
-                     %s, %s,
-                     %s, %s, %s, %s, %s,
-                     %s, %s, %s,
-                     %s, %s)''',
-                    (
-                        session['user_id'],
-                        form_data.get('membership_type'),
-                        form_data.get('country'),
-                        form_data.get('company_name'),
-                        form_data.get('business_activity'),
-                        form_data.get('sub_activity'),
-                        bool(form_data.get('has_online_store', False)),
-                        form_data.get('online_store_products'),
-                        form_data.get('company_street'),
-                        form_data.get('company_postal_code'),
-                        form_data.get('company_city'),
-                        form_data.get('company_country'),
-                        form_data.get('company_phone'),
-                        form_data.get('company_website'),
-                        form_data.get('contact_salutation'),
-                        form_data.get('first_name'),
-                        form_data.get('last_name'),
-                        form_data.get('email'),
-                        form_data.get('phone'),
-                        bool(form_data.get('data_processing_consent', False)),
-                        bool(form_data.get('marketing_consent', False)),
-                        bool(form_data.get('terms_consent', True)),
-                        consent_filename,
-                        consent_original_name
-                    )
+        form_data.update({
+            'data_processing_consent': bool(request.form.get('data_processing_consent')),
+            'marketing_consent': bool(request.form.get('marketing_consent')),
+            'terms_consent': bool(request.form.get('terms_consent'))
+        })
+
+        # File-Upload (unverändert)
+        consent_filename = None
+        consent_original_name = None
+        if 'consent_document' in request.files:
+            file = request.files['consent_document']
+            if file and file.filename != '' and allowed_file(file.filename):
+                file_extension = file.filename.rsplit('.', 1)[1].lower()
+                consent_filename = f"{uuid.uuid4().hex}.{file_extension}"
+                consent_original_name = secure_filename(file.filename)
+                file_path = os.path.join(app.config['UPLOAD_FOLDER'], consent_filename)
+                file.save(file_path)
+
+        # kompletter INSERT inkl. aller Felder aus Step 2/3
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        if DATABASE_URL:
+            cur.execute(
+                '''INSERT INTO members 
+                   (user_id, membership_type, country, company_name, business_activity, sub_activity,
+                    has_online_store, online_store_products,
+                    company_street, company_postal_code, company_city, company_country,
+                    company_phone, company_website,
+                    contact_salutation, first_name, last_name, email, phone,
+                    data_processing_consent, marketing_consent, terms_consent,
+                    consent_document_filename, consent_document_original_name)
+                   VALUES
+                   (%s, %s, %s, %s, %s, %s,
+                    %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s,
+                    %s, %s, %s, %s, %s,
+                    %s, %s, %s,
+                    %s, %s)''',
+                (
+                    session['user_id'],
+                    form_data.get('membership_type'),
+                    form_data.get('country'),
+                    form_data.get('company_name'),
+                    form_data.get('business_activity'),
+                    form_data.get('sub_activity'),
+                    bool(form_data.get('has_online_store', False)),
+                    form_data.get('online_store_products'),
+                    form_data.get('company_street'),
+                    form_data.get('company_postal_code'),
+                    form_data.get('company_city'),
+                    form_data.get('company_country'),
+                    form_data.get('company_phone'),
+                    form_data.get('company_website'),
+                    form_data.get('contact_salutation'),
+                    form_data.get('first_name'),
+                    form_data.get('last_name'),
+                    form_data.get('email'),
+                    form_data.get('phone'),
+                    bool(form_data.get('data_processing_consent', False)),
+                    bool(form_data.get('marketing_consent', False)),
+                    bool(form_data.get('terms_consent', True)),
+                    consent_filename,
+                    consent_original_name
                 )
-            else:
-                cur.execute('''INSERT INTO members 
-                    (user_id, membership_type, country, company_name, business_activity, sub_activity,
-                     has_online_store, online_store_products,
-                     company_street, company_postal_code, company_city, company_country,
-                     company_phone, company_website,
-                     contact_salutation, first_name, last_name, email, phone,
-                     data_processing_consent, marketing_consent, terms_consent,
-                     consent_document_filename, consent_document_original_name)
-                    VALUES
-                    (?, ?, ?, ?, ?, ?,
-                     ?, ?,
-                     ?, ?, ?, ?,
-                     ?, ?,
-                     ?, ?, ?, ?, ?,
-                     ?, ?, ?,
-                     ?, ?)''',
-                    (
-                        session['user_id'],
-                        form_data.get('membership_type'),
-                        form_data.get('country'),
-                        form_data.get('company_name'),
-                        form_data.get('business_activity'),
-                        form_data.get('sub_activity'),
-                        1 if form_data.get('has_online_store', False) else 0,
-                        form_data.get('online_store_products'),
-                        form_data.get('company_street'),
-                        form_data.get('company_postal_code'),
-                        form_data.get('company_city'),
-                        form_data.get('company_country'),
-                        form_data.get('company_phone'),
-                        form_data.get('company_website'),
-                        form_data.get('contact_salutation'),
-                        form_data.get('first_name'),
-                        form_data.get('last_name'),
-                        form_data.get('email'),
-                        form_data.get('phone'),
-                        1 if form_data.get('data_processing_consent', False) else 0,
-                        1 if form_data.get('marketing_consent', False) else 0,
-                        1 if form_data.get('terms_consent', True) else 0,
-                        consent_filename,
-                        consent_original_name
-                    )
+            )
+        else:
+            cur.execute(
+                '''INSERT INTO members 
+                   (user_id, membership_type, country, company_name, business_activity, sub_activity,
+                    has_online_store, online_store_products,
+                    company_street, company_postal_code, company_city, company_country,
+                    company_phone, company_website,
+                    contact_salutation, first_name, last_name, email, phone,
+                    data_processing_consent, marketing_consent, terms_consent,
+                    consent_document_filename, consent_document_original_name)
+                   VALUES
+                   (?, ?, ?, ?, ?, ?,
+                    ?, ?,
+                    ?, ?, ?, ?,
+                    ?, ?,
+                    ?, ?, ?, ?, ?,
+                    ?, ?, ?,
+                    ?, ?)''',
+                (
+                    session['user_id'],
+                    form_data.get('membership_type'),
+                    form_data.get('country'),
+                    form_data.get('company_name'),
+                    form_data.get('business_activity'),
+                    form_data.get('sub_activity'),
+                    1 if form_data.get('has_online_store', False) else 0,
+                    form_data.get('online_store_products'),
+                    form_data.get('company_street'),
+                    form_data.get('company_postal_code'),
+                    form_data.get('company_city'),
+                    form_data.get('company_country'),
+                    form_data.get('company_phone'),
+                    form_data.get('company_website'),
+                    form_data.get('contact_salutation'),
+                    form_data.get('first_name'),
+                    form_data.get('last_name'),
+                    form_data.get('email'),
+                    form_data.get('phone'),
+                    1 if form_data.get('data_processing_consent', False) else 0,
+                    1 if form_data.get('marketing_consent', False) else 0,
+                    1 if form_data.get('terms_consent', True) else 0,
+                    consent_filename,
+                    consent_original_name
                 )
-    
-            conn.commit()
-            conn.close()
+            )
+
+        conn.commit()
+        conn.close()
 
         session.pop('membership_form', None)
         return redirect(url_for('dashboard'))
-        
-        session.pop('membership_form', None)
-        return redirect(url_for('dashboard'))
-    
+
     session['membership_form'] = form_data
     next_step = step + 1 if step < 4 else 4
     return redirect(url_for('membership_form', step=next_step))
+
+
 
 @app.route('/download/<int:member_id>/consent')
 def download_consent_document(member_id):
