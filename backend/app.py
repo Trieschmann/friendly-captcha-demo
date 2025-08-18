@@ -403,6 +403,53 @@ def view_member(member_id):
 
     return render_template_string(VIEW_MEMBER_TEMPLATE, member=member)
 
+@app.route('/membership/<int:member_id>/delete', methods=['POST'])
+def delete_member(member_id):
+    if 'user_id' not in session:
+        return redirect(url_for('index'))
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    # Zuerst prüfen ob der Member dem User gehört und Dateiinfo holen
+    if DATABASE_URL:
+        cur.execute('SELECT consent_document_filename FROM members WHERE id = %s AND user_id = %s', 
+                   (member_id, session['user_id']))
+    else:
+        cur.execute('SELECT consent_document_filename FROM members WHERE id = ? AND user_id = ?', 
+                   (member_id, session['user_id']))
+    
+    result = cur.fetchone()
+    if not result:
+        conn.close()
+        return "Member not found", 404
+    
+    consent_filename = result[0]
+    
+    # Member aus Datenbank löschen
+    if DATABASE_URL:
+        cur.execute('DELETE FROM members WHERE id = %s AND user_id = %s', 
+                   (member_id, session['user_id']))
+    else:
+        cur.execute('DELETE FROM members WHERE id = ? AND user_id = ?', 
+                   (member_id, session['user_id']))
+    
+    conn.commit()
+    conn.close()
+    
+    # Uploaded Datei löschen falls vorhanden
+    if consent_filename:
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], consent_filename)
+        if os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+            except:
+                pass  # Fehler beim Dateien löschen ignorieren
+    
+    return redirect(url_for('dashboard'))
+
+
+
 # Template Constants
 LOGIN_TEMPLATE = '''
 <!DOCTYPE html>
@@ -611,13 +658,10 @@ DASHBOARD_TEMPLATE = '''
                     </div>
                     {% endif %}
                     
-                    <div class="member-actions">
-                        <a href="/membership/{{ member.id }}/view" class="btn btn-primary">View</a>
-                        <a href="/membership/{{ member.id }}/edit" class="btn btn-secondary">Edit</a>
-                        {% if member.consent_document_filename %}
-                        <a href="/download/{{ member.id }}/consent" class="btn btn-success">📄 Download PDF</a>
-                        {% endif %}
-                    </div>
+                    <form method="POST" action="/membership/{{ member.id }}/delete" style="display: inline;" 
+                          onsubmit="return confirm('Are you sure you want to delete {{ member.company_name }}?');">
+                        <button type="submit" class="btn btn-secondary" style="background: #dc3545; border: none; cursor: pointer; color: white;">🗑️ Delete</button>
+                    </form>
                 </div>
                 {% endfor %}
             </div>
@@ -687,55 +731,128 @@ VIEW_MEMBER_TEMPLATE = '''
         .file-link:hover {
             text-decoration: underline;
         }
-        .back-link {
-            display: inline-block;
+        .actions {
             margin-top: 40px;
-            background: #6c757d;
-            color: white;
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            padding-top: 20px;
+            border-top: 1px solid #e9ecef;
+        }
+        .btn {
             padding: 12px 24px;
+            border: none;
             border-radius: 8px;
             text-decoration: none;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
         }
-        .back-link:hover {
+        .btn-back {
+            background: #6c757d;
+            color: white;
+        }
+        .btn-back:hover {
             background: #545b62;
+        }
+        .btn-edit {
+            background: #007bff;
+            color: white;
+        }
+        .btn-edit:hover {
+            background: #0056b3;
+        }
+        .btn-delete {
+            background: #dc3545;
+            color: white;
+        }
+        .btn-delete:hover {
+            background: #c82333;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .status-active { background: #d4edda; color: #155724; }
+        .status-pending { background: #fff3cd; color: #856404; }
+        .status-expired { background: #f8d7da; color: #721c24; }
+        .membership-badge {
+            display: inline-block;
+            background: #e3f2fd;
+            color: #1976d2;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 20px;
         }
     </style>
 </head>
 <body>
     <div class="container">
         <h2>👤 Member Details</h2>
+        
+        <div style="text-align: center;">
+            <div class="membership-badge">
+                {% if member.membership_type == 'packaging-paper' %}📦 Packaging & Paper{% else %}🍽️ Food Service Packaging{% endif %}
+            </div>
+        </div>
 
-        <h3>🏢 Company Details</h3>
+        <h3>🏢 Company Information</h3>
         <div class="detail-row"><span class="label">Company Name</span><span class="value">{{ member.company_name }}</span></div>
+        <div class="detail-row"><span class="label">Country</span><span class="value">{{ member.country or '—' }}</span></div>
+        <div class="detail-row"><span class="label">Street Address</span><span class="value">{{ member.company_street or '—' }}</span></div>
+        <div class="detail-row"><span class="label">Postal Code</span><span class="value">{{ member.company_postal_code or '—' }}</span></div>
+        <div class="detail-row"><span class="label">City</span><span class="value">{{ member.company_city or '—' }}</span></div>
+        <div class="detail-row"><span class="label">Company Country</span><span class="value">{{ member.company_country or '—' }}</span></div>
+        <div class="detail-row"><span class="label">Company Phone</span><span class="value">{{ member.company_phone or '—' }}</span></div>
         <div class="detail-row"><span class="label">Website</span><span class="value">{{ member.company_website or '—' }}</span></div>
-        <div class="detail-row"><span class="label">Street</span><span class="value">{{ member.company_street }}</span></div>
-        <div class="detail-row"><span class="label">Postal Code</span><span class="value">{{ member.company_postal_code }}</span></div>
-        <div class="detail-row"><span class="label">City</span><span class="value">{{ member.company_city }}</span></div>
-        <div class="detail-row"><span class="label">Country</span><span class="value">{{ member.company_country }}</span></div>
-        <div class="detail-row"><span class="label">Phone</span><span class="value">{{ member.company_phone or '—' }}</span></div>
+
+        <h3>📋 Business Details</h3>
+        <div class="detail-row"><span class="label">Business Activity</span><span class="value">{{ member.business_activity or '—' }}</span></div>
+        <div class="detail-row"><span class="label">Sub Activity</span><span class="value">{{ member.sub_activity or '—' }}</span></div>
+        <div class="detail-row"><span class="label">Has Online Store</span><span class="value">{{ 'Yes' if member.has_online_store else 'No' }}</span></div>
+        {% if member.has_online_store %}
+        <div class="detail-row"><span class="label">Online Store Products</span><span class="value">{{ member.online_store_products or '—' }}</span></div>
+        {% endif %}
 
         <h3>👤 Contact Person</h3>
-        <div class="detail-row"><span class="label">Salutation</span><span class="value">{{ member.contact_salutation }}</span></div>
-        <div class="detail-row"><span class="label">First Name</span><span class="value">{{ member.first_name }}</span></div>
-        <div class="detail-row"><span class="label">Last Name</span><span class="value">{{ member.last_name }}</span></div>
-        <div class="detail-row"><span class="label">Email</span><span class="value">{{ member.email }}</span></div>
+        <div class="detail-row"><span class="label">Salutation</span><span class="value">{{ member.contact_salutation or '—' }}</span></div>
+        <div class="detail-row"><span class="label">First Name</span><span class="value">{{ member.first_name or '—' }}</span></div>
+        <div class="detail-row"><span class="label">Last Name</span><span class="value">{{ member.last_name or '—' }}</span></div>
+        <div class="detail-row"><span class="label">Email</span><span class="value">{{ member.email or '—' }}</span></div>
         <div class="detail-row"><span class="label">Phone</span><span class="value">{{ member.phone or '—' }}</span></div>
 
-        <h3>📄 Membership Details</h3>
-        <div class="detail-row"><span class="label">Category</span><span class="value">{{ member.category }}</span></div>
-        <div class="detail-row"><span class="label">Online Store</span><span class="value">{{ member.online_store or '—' }}</span></div>
+        <h3>📄 Membership & Consent</h3>
+        <div class="detail-row"><span class="label">Status</span><span class="value"><span class="status-badge status-{{ member.status or 'pending' }}">{{ (member.status or 'pending')|title }}</span></span></div>
+        <div class="detail-row"><span class="label">Join Date</span><span class="value">{{ member.join_date or '—' }}</span></div>
+        <div class="detail-row"><span class="label">Data Processing Consent</span><span class="value">{{ 'Yes' if member.data_processing_consent else 'No' }}</span></div>
+        <div class="detail-row"><span class="label">Marketing Consent</span><span class="value">{{ 'Yes' if member.marketing_consent else 'No' }}</span></div>
+        <div class="detail-row"><span class="label">Terms Consent</span><span class="value">{{ 'Yes' if member.terms_consent else 'No' }}</span></div>
         {% if member.consent_document_filename %}
             <div class="detail-row">
                 <span class="label">Consent Document</span>
                 <span class="value">
                     <a href="/download/{{ member.id }}/consent" class="file-link" target="_blank">
-                        📄 {{ member.consent_document_original_name or "Download" }}
+                        📄 {{ member.consent_document_original_name or "Download PDF" }}
                     </a>
                 </span>
             </div>
         {% endif %}
+        <div class="detail-row"><span class="label">Created At</span><span class="value">{{ member.created_at or '—' }}</span></div>
 
-        <a href="/dashboard" class="back-link">← Back to Dashboard</a>
+        <div class="actions">
+            <a href="/dashboard" class="btn btn-back">← Back to Dashboard</a>
+            <a href="/membership/{{ member.id }}/edit" class="btn btn-edit">✏️ Edit</a>
+            <form method="POST" action="/membership/{{ member.id }}/delete" style="display: inline;" 
+                  onsubmit="return confirm('Are you sure you want to delete this member? This action cannot be undone.');">
+                <button type="submit" class="btn btn-delete">🗑️ Delete</button>
+            </form>
+        </div>
     </div>
 </body>
 </html>
