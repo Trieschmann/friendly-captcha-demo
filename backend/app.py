@@ -658,10 +658,17 @@ DASHBOARD_TEMPLATE = '''
                     </div>
                     {% endif %}
                     
-                    <form method="POST" action="/membership/{{ member.id }}/delete" style="display: inline;" 
-                          onsubmit="return confirm('Are you sure you want to delete {{ member.company_name }}?');">
-                        <button type="submit" class="btn btn-secondary" style="background: #dc3545; border: none; cursor: pointer; color: white;">🗑️ Delete</button>
-                    </form>
+                    <div class="member-actions">
+                        <a href="/membership/{{ member.id }}/view" class="btn btn-primary">View</a>
+                        <a href="/membership/{{ member.id }}/edit" class="btn btn-secondary">Edit</a>
+                        {% if member.consent_document_filename %}
+                        <a href="/download/{{ member.id }}/consent" class="btn btn-success">📄 Download PDF</a>
+                        {% endif %}
+                        <form method="POST" action="/membership/{{ member.id }}/delete" style="display: inline;" 
+                              onsubmit="return confirm('Are you sure you want to delete {{ member.company_name }}?');">
+                            <button type="submit" class="btn btn-secondary" style="background: #dc3545; border: none; cursor: pointer; color: white;">🗑️ Delete</button>
+                        </form>
+                    </div>
                 </div>
                 {% endfor %}
             </div>
